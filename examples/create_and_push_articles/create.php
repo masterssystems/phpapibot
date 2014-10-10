@@ -1,10 +1,10 @@
 #!/usr/bin/php
-<?
-  include( 'phpapilib.php' );
+<?php
+  include( '../../phpapilib.php' );
   
   login();
   
-  $f1 = fopen( 'datenbank_bbss_hab.csv', 'r' );
+  $f1 = fopen( 'database.csv', 'r' );
   $i = 0;
   while( !feof( $f1 ) ) {
     $line = fgets( $f1 );
@@ -30,12 +30,12 @@
     if( $data[13] ) {
       if( $data[15] && $data[14] ) $geb = '* '.$data[15].'.'.$data[14].'.'.$data[13];
       else $geb = '* '.$data[13];
-      $cats .= '[[Kategorie:Geboren '.$data[13].']]'."\n";
+      $cats .= '[[Category:Born '.$data[13].']]'."\n";
     }
     if( $data[16] ) {
       if( $data[18] && $data[17] ) $tod = '† '.$data[18].'.'.$data[17].'.'.$data[16];
       else $tod = '† '.$data[16];
-      $cats .= '[[Kategorie:Gestorben '.$data[16].']]'."\n";
+      $cats .= '[[Category:Died '.$data[16].']]'."\n";
     }
     if( $geb || $tod ) {
       $text .= '(';
@@ -47,15 +47,15 @@
     $text .= "\n\n";
     # Beruf
     if( $data[21] ) {
-      $text .= 'Beruf: '.$data[21];
+      $text .= 'Profession: '.$data[21];
       $text .= "\n\n";
     }
     # versteckt: Adresse, Heimatort
     if( $data[19] || $data[20] || $data[21] ) {
-      $text .= '{{verstecken|';
-      if( $data[19] ) $text .= 'Adresse: '.$data[19]."\n";
-      if( $data[20] ) $text .= 'Kontaktadresse: '.$data[20]."\n";
-      if( $data[21] ) $text .= 'Heimatort: '.$data[21]."\n";
+      $text .= '{{hide|';
+      if( $data[19] ) $text .= 'Adress: '.$data[19]."\n";
+      if( $data[20] ) $text .= 'Contact Adress: '.$data[20]."\n";
+      if( $data[21] ) $text .= 'Home Town: '.$data[21]."\n";
       $text .= '}}';
       $text .= "\n\n";
     }
@@ -73,23 +73,23 @@
     }
     # Weblinks UB Bern
     if( $data[3] && $data[4] ) {
-      $text .= '== Weblinks UB Bern =='."\n";
+      $text .= '== Weblinks =='."\n";
       $text .= '{{AlephLink|'.$data[3].'|'.$data[4].'}}';
       $text .= "\n\n";
     }
     # Quellen
-    $text .= '== Quellen =='."\n";
+    $text .= '== Sources =='."\n";
     $text .= '<references/>'."\n";
     $text .= '{{Quelle|QUELLE=BBSS|DATUM='.$data[27].'}}';
     $text .= "\n\n";
     # versteckt: interne Notizen
     if( $data[25] ) {
-      $text .= '{{verstecken|'.$data[25].'}}';
+      $text .= '{{hide|'.$data[25].'}}';
       $text .= "\n\n";
     }
     # Kategorien
     if( $cats ) $text .= $cats;
-    $text .= '[[Kategorie:A bis Z]]';
+    $text .= '[[Category:A bis Z]]';
     # Normdaten
     if( $data[7] ) {
       $text .= '{{Normdaten|PND='.$data[7].'}}'."\n";
