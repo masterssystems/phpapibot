@@ -287,6 +287,29 @@
       return $r;
     }
   }
+  
+  function upload_file_url( $url, $r = false ) {
+    if( !$r ) {
+      echo 'UPLOAD: fetch token'."\n";
+      return upload_file_url( $url, sendcmd( 'query', array( 'titles' => $article, 'prop' => 'info|revisions', 'intoken' => 'edit' ) ) );
+    } elseif( array_key_exists( 'warnings', $r ) ) {
+      echo 'UPLOAD: warnings '.$r['warnings']['info']['*']."\n";
+      return false;
+    } elseif( array_key_exists( 'error', $r ) ) {
+      echo 'UPLOAD: error '.$r['error']['info']."\n";
+      return false;
+    } elseif( $r['query']['pages'] ) {
+      $file = array_keys( $r['query']['pages'] );
+      echo 'UPLOAD: '.$r['query']['pages'][$file[0]]['edittoken']."\n";
+      return upload_file_url( $url, sendcmd( 'upload', array( 'url' => $url, 'token' => $r['query']['pages'][$page[0]]['edittoken'] ) ) );
+    } elseif( $r['edit']['result'] == 'Failure' ) {
+      echo 'UPLOAD: Error '.$r['edit']['result']."\n";
+      return false;
+    } elseif( $r['edit']['result'] == 'Success' ) {
+      echo 'UPLOAD: Success'."\n";
+      return $r;
+    }
+  }
 
   function rem_article( $article = 'Main Page', $reason = '', $r = false ) {
     if( !$r ) {
