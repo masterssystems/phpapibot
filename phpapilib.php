@@ -288,24 +288,34 @@
     }
   }
   
-  function upload_file_url( $url, $r = false ) {
+  function upload_file_url( $url, $filename = false, $text = '', $r = false ) {
+    # guess filename from URL when needed
+    if( $filename === false ) $filename = basename( $url );
+    
+    # handle return values (recursion)
     if( !$r ) {
+      # initial invocation - get edit token
       echo 'UPLOAD: fetch token'."\n";
-      return upload_file_url( $url, sendcmd( 'query', array( 'titles' => $article, 'prop' => 'info|revisions', 'intoken' => 'edit' ) ) );
+      return upload_file_url( $url, $filename, $text, sendcmd( 'query', array( 'titles' => $filename, 'meta' => 'tokens' ) ) );
     } elseif( array_key_exists( 'warnings', $r ) ) {
+      # warning set - return and start over
       echo 'UPLOAD: warnings '.$r['warnings']['info']['*']."\n";
       return false;
     } elseif( array_key_exists( 'error', $r ) ) {
+      # error set - return and start over
       echo 'UPLOAD: error '.$r['error']['info']."\n";
       return false;
     } elseif( $r['query']['pages'] ) {
-      $file = array_keys( $r['query']['pages'] );
-      echo 'UPLOAD: '.$r['query']['pages'][$file[0]]['edittoken']."\n";
-      return upload_file_url( $url, sendcmd( 'upload', array( 'url' => $url, 'token' => $r['query']['pages'][$page[0]]['edittoken'] ) ) );
+      # pages object returned - extract edit token and proceed with upload
+      $token = $r['query']['tokens']['csrftoken'];
+      echo 'UPLOAD: '.$token."\n";
+      return upload_file_url( $url, $filename, $text, sendcmd( 'upload', array( 'url' => $url, 'filename' => $filename, 'text' => $text, 'async' => 1, 'token' => $token ) ) );
     } elseif( $r['edit']['result'] == 'Failure' ) {
+      # upload failed - return and start over
       echo 'UPLOAD: Error '.$r['edit']['result']."\n";
       return false;
     } elseif( $r['edit']['result'] == 'Success' ) {
+      # upload succeeded - return object
       echo 'UPLOAD: Success'."\n";
       return $r;
     }
