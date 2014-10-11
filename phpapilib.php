@@ -1,6 +1,7 @@
 <?php
   require_once( 'config.php' );
   if( !defined( 'BOTNAME' ) ) define( 'BOTNAME', 'PHPAPIlib, by Manuel Schneider' );
+  if( !defined( 'CHUNKSIZE' ) ) define( 'CHUNKSIZE', 20 * 1024 * 1024 ); # 20 MB
   
   function sendcmd( $get, $post = false ) {
     if( is_array( $get ) ) {
@@ -15,60 +16,65 @@
       $action = '?format=php';
     }
 
+    # prepare cookie jar file
+    touch( 'cookies.txt' );
+    $file = realpath( 'cookies.txt' );
+
+    # set curl parameter
+    $c = curl_init( URL.$action );
+
+    # prepare HTTP headers
+    $headers = array();
+    
     # handle file uploads
     # - filename: 	target filename (wiki)
     # - file: 		source filename (path on filesystem)
     if( isset( $post['filename'] ) && isset( $post['file'] ) ) {
-      # turn 'file' form field into a file upload
-      $post['file'] = curl_file_create( $post['file'], mime_content_type( $post['filename'] ), $post['filename'] );
-    }
-
-    if( defined( 'CONVERTPOST' ) ) {
-      # POST-Variable in GET-String umbauen
-      if( is_array( $post ) ) {
-        $poststr = false;
-        foreach( $post as $name => $value ) {
-          if( $poststr ) $poststr .= '&';
-          $poststr .= $name.'='.$value;
-        }
+      if( isset( $post['offset'] ) ) {
+        # we need to manually add the chunk form field - convert array into post string
+        $post = http_build_query( $post );
+        # build chunk
+        #$boundary = '--boundary-'.md5( time() );
+        #$post['chunk'] = 0;
+        
+      } else {
+        # turn 'file' form field into a file upload
+        $post['file'] = curl_file_create( $post['file'], mime_content_type( $post['filename'] ), $post['filename'] );
       }
     }
-    $poststr = $post;
-    
-    # bereite Cookie-Datei vor
-    touch( 'cookies.txt' );
-    $file = realpath( 'cookies.txt' );
-    # Setze Parameter zum HTTP-Aufruf
-    $c = curl_init( URL.$action );
+
     curl_setopt( $c, CURLOPT_RETURNTRANSFER, true );
     curl_setopt( $c, CURLOPT_ENCODING, 'UTF-8' );
     curl_setopt( $c, CURLOPT_USERAGENT, BOTNAME );
     curl_setopt( $c, CURLOPT_POST, true );
-    curl_setopt( $c, CURLOPT_POSTFIELDS, $poststr );
+    curl_setopt( $c, CURLOPT_POSTFIELDS, $post );
     curl_setopt( $c, CURLOPT_CONNECTTIMEOUT, 10 );
     curl_setopt( $c, CURLOPT_COOKIEJAR, $file );
     curl_setopt( $c, CURLOPT_COOKIEFILE, $file );
     curl_setopt( $c, CURLOPT_SSL_VERIFYPEER, false );
+    curl_setopt( $c, CURLOPT_HTTPHEADER, $headers );
     if( defined( 'DEBUG' ) ) {
       curl_setopt( $c, CURLOPT_VERBOSE, true );
       #curl_setopt( $c, CURLOPT_HEADER, true ); # Achtung, fügt Header-Daten in den Rückgabewert ein - bricht die Verarbeitung der Daten
       curl_setopt( $c, CURLINFO_HEADER_OUT, true );
-      echo URL.$action.' ('.$poststr.')'."\n";
-      echo '----'."\n".'dumping poststring:'."\n";
-      var_dump( $poststr );
-      echo '----'."\n";
+      echo URL.$action.' ('.$get.')'."\n";
+      echo '---- dumping poststring:'."\n";
+      var_dump( $post );
+      echo "\n".'----'."\n";
     }
     # Führe Aufruf durch
     $r = curl_exec( $c );
     curl_close( $c );
     if( defined( 'DEBUG' ) ) {
-      echo '----'."\n".'DEBUG: result string = '.$r."\n".'----'."\n";
+      echo '---- DEBUG: result string'."\n"; 
+      echo $r;
+      echo "\n".'----'."\n";
     }
     $r = unserialize( $r );
     if( defined( 'DEBUG' ) ) {
-      echo '----'."\n".'DEBUG: unserialized object = ';
+      echo '---- DEBUG: unserialized object:';
       var_dump( $r );
-      echo '----'."\n";
+      echo "\n".'----'."\n";
     }
     return $r;
   }
@@ -304,11 +310,6 @@
     if( $filename === false ) $filename = basename( $filepath );
     # get filesize
     $filesize = filesize( $filepath );
-    # chunk size
-    if( !defined( 'CHUNKSIZE' ) ) define( 'CHUNKSIZE', 1024 * 1024 );
-    # decide whether we do a chunked upload or not
-    if( $filesize > ( CHUNKSIZE ) ) $chunked = true;
-    else $chunked = false;
     
     # handle return values (recursion)
     if( !$r ) {
@@ -337,18 +338,15 @@
       if( array_key_exists( 'csrftoken', $r ) ) $token = $r['query']['tokens']['csrftoken'];
       else $token = $r['query']['pages'][-1]['edittoken'];
       echo 'UPLOAD: '.$token."\n";
-      
-      # handle chunked upload
-      if( $chunked ) {
-        # how many chunks?
-        $chunks = ceil( $filesize / CHUNKSIZE );
-        # iterate through all needed chunks
-        for( $i = 0; $i < $chunks; $i++ ) {
-          echo 'UPLOAD: chunked'."\n";
-          return upload_file( $filepath, $filename, $text, sendcmd( 'upload', array( 'chunk' => file_get_contents( $filepath, false, NULL, CHUNKSIZE * $i, CHUNKSIZE ), 'filename' => $filename, 'text' => $text, 'filesize' => $filesize, 'offset' => $i * CHUNKSIZE, 'token' => $token ) ) );
-        }
-      # handle regular upload
+
+      # check upload mode - chunked or regular (filesize < chunksize)
+      if( $filesize > CHUNKSIZE ) {
+        # start chunked upload
+        echo 'UPLOAD: 1st Chunk'."\n";
+        return upload_file( $filepath, $filename, $text, sendcmd( 'upload', array( 'filename' => $filename, 'file' => $filepath, 'offset' => 0, 'stash' => 1, 'token' => $token ) ) );
+        
       } else {
+        # do regular upload
         return upload_file( $filepath, $filename, $text, sendcmd( 'upload', array( 'filename' => $filename, 'text' => $text, 'file' => $filepath, 'token' => $token ) ) );
       }
       
