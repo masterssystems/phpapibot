@@ -6,13 +6,21 @@
     if( is_array( $get ) ) {
       $action = '?';
       foreach( $get as $name => $value ) {
-        $action .= $name.'='.$value.'&';
+        $action .= $name.'='.urlencode( $value ).'&';
       }
       $action .= 'format=php';
     } elseif( $get ) {
       $action = '?action='.$get.'&format=php';
     } else {
       $action = '?format=php';
+    }
+
+    # handle file uploads
+    # - filename: 	target filename (wiki)
+    # - file: 		source filename (path on filesystem)
+    if( isset( $post['filename'] ) && isset( $post['file'] ) ) {
+      # turn 'file' form field into a file upload
+      $post['file'] = curl_file_create( $post['file'], mime_content_type( $post['filename'] ), $post['filename'] );
     }
 
     if( defined( 'CONVERTPOST' ) ) {
@@ -46,18 +54,21 @@
       #curl_setopt( $c, CURLOPT_HEADER, true ); # Achtung, fügt Header-Daten in den Rückgabewert ein - bricht die Verarbeitung der Daten
       curl_setopt( $c, CURLINFO_HEADER_OUT, true );
       echo URL.$action.' ('.$poststr.')'."\n";
+      echo '----'."\n".'dumping poststring:'."\n";
       var_dump( $poststr );
+      echo '----'."\n";
     }
     # Führe Aufruf durch
     $r = curl_exec( $c );
     curl_close( $c );
     if( defined( 'DEBUG' ) ) {
-      echo 'DEBUG: result string = '.$r."\n";
+      echo '----'."\n".'DEBUG: result string = '.$r."\n".'----'."\n";
     }
     $r = unserialize( $r );
     if( defined( 'DEBUG' ) ) {
-      echo 'DEBUG: unserialized object = ';
+      echo '----'."\n".'DEBUG: unserialized object = ';
       var_dump( $r );
+      echo '----'."\n";
     }
     return $r;
   }
@@ -287,6 +298,71 @@
       return $r;
     }
   }
+
+  function upload_file( $filepath, $filename = false, $text = '', $r = false ) {
+    # guess filename from path when needed
+    if( $filename === false ) $filename = basename( $filepath );
+    # get filesize
+    $filesize = filesize( $filepath );
+    # chunk size
+    if( !defined( 'CHUNKSIZE' ) ) define( 'CHUNKSIZE', 1024 * 1024 );
+    # decide whether we do a chunked upload or not
+    if( $filesize > ( CHUNKSIZE ) ) $chunked = true;
+    else $chunked = false;
+    
+    # handle return values (recursion)
+    if( !$r ) {
+      # initial invocation - get edit token
+      echo 'UPLOAD: fetch token'."\n";
+      return upload_file( $filepath, $filename, $text, sendcmd( 'query', array( 'titles' => $filename, 'meta' => 'tokens' ) ) );
+
+    } elseif( array_key_exists( 'warnings', $r ) ) {
+      # warning set - check reason
+      if( $r['warnings']['query']['*'] == 'Unrecognized value for parameter \'meta\': tokens' ) {
+        # old wiki - get edit token and retry
+        echo 'UPLOAD: fetch intoken'."\n";
+        return upload_file( $filepath, $filename, $text, sendcmd( 'query', array( 'titles' => $filename, 'prop' => 'info', 'intoken' => 'edit' ) ) );
+      } else {
+        # real warning - return and start over
+        echo 'UPLOAD: warnings '.$r['warnings']['info']['*']."\n";
+        return false;
+      }
+    } elseif( array_key_exists( 'error', $r ) ) {
+      # error set - return and start over
+      echo 'UPLOAD: error '.$r['error']['info']."\n";
+      return false;
+
+    } elseif( $r['query']['pages'] ) {
+      # pages object returned - extract edit token and proceed with upload
+      if( array_key_exists( 'csrftoken', $r ) ) $token = $r['query']['tokens']['csrftoken'];
+      else $token = $r['query']['pages'][-1]['edittoken'];
+      echo 'UPLOAD: '.$token."\n";
+      
+      # handle chunked upload
+      if( $chunked ) {
+        # how many chunks?
+        $chunks = ceil( $filesize / CHUNKSIZE );
+        # iterate through all needed chunks
+        for( $i = 0; $i < $chunks; $i++ ) {
+          echo 'UPLOAD: chunked'."\n";
+          return upload_file( $filepath, $filename, $text, sendcmd( 'upload', array( 'chunk' => file_get_contents( $filepath, false, NULL, CHUNKSIZE * $i, CHUNKSIZE ), 'filename' => $filename, 'text' => $text, 'filesize' => $filesize, 'offset' => $i * CHUNKSIZE, 'token' => $token ) ) );
+        }
+      # handle regular upload
+      } else {
+        return upload_file( $filepath, $filename, $text, sendcmd( 'upload', array( 'filename' => $filename, 'text' => $text, 'file' => $filepath, 'token' => $token ) ) );
+      }
+      
+    } elseif( $r['edit']['result'] == 'Failure' ) {
+      # upload failed - return and start over
+      echo 'UPLOAD: Error '.$r['edit']['result']."\n";
+      return false;
+    
+    } elseif( $r['edit']['result'] == 'Success' ) {
+      # upload succeeded - return object
+      echo 'UPLOAD: Success'."\n";
+      return $r;
+    }
+  }
   
   function upload_file_url( $url, $filename = false, $text = '', $r = false ) {
     # guess filename from URL when needed
@@ -297,19 +373,30 @@
       # initial invocation - get edit token
       echo 'UPLOAD: fetch token'."\n";
       return upload_file_url( $url, $filename, $text, sendcmd( 'query', array( 'titles' => $filename, 'meta' => 'tokens' ) ) );
+
     } elseif( array_key_exists( 'warnings', $r ) ) {
-      # warning set - return and start over
-      echo 'UPLOAD: warnings '.$r['warnings']['info']['*']."\n";
-      return false;
+      # warning set - check reason
+      if( $r['warnings']['query']['*'] == 'Unrecognized value for parameter \'meta\': tokens' ) {
+        # old wiki - get edit token and retry
+        echo 'UPLOAD: fetch intoken'."\n";
+        return upload_file_url( $url, $filename, $text, sendcmd( 'query', array( 'titles' => $filename, 'prop' => 'info', 'intoken' => 'edit' ) ) );
+      } else {
+        # real warning - return and start over
+        echo 'UPLOAD: warnings '.$r['warnings']['info']['*']."\n";
+        return false;
+      }
+
     } elseif( array_key_exists( 'error', $r ) ) {
       # error set - return and start over
       echo 'UPLOAD: error '.$r['error']['info']."\n";
       return false;
+
     } elseif( $r['query']['pages'] ) {
       # pages object returned - extract edit token and proceed with upload
-      $token = $r['query']['tokens']['csrftoken'];
+      if( array_key_exists( 'csrftoken', $r ) ) $token = $r['query']['tokens']['csrftoken'];
+      else $token = $r['query']['pages'][-1]['edittoken'];
       echo 'UPLOAD: '.$token."\n";
-      return upload_file_url( $url, $filename, $text, sendcmd( 'upload', array( 'url' => $url, 'filename' => $filename, 'text' => $text, 'async' => 1, 'token' => $token ) ) );
+      return upload_file_url( $url, $filename, $text, sendcmd( array( 'action' => 'upload', 'url' => $url, 'filename' => $filename, 'text' => $text, 'async' => 1, 'token' => $token ) ) );
     } elseif( $r['edit']['result'] == 'Failure' ) {
       # upload failed - return and start over
       echo 'UPLOAD: Error '.$r['edit']['result']."\n";
