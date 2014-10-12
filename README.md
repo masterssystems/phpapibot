@@ -43,4 +43,4 @@ Running a script:
 * run a terminal
 * navigate to the directory where the script is located
 * run the script:
-* $ php <filename.php> <parameters>
+* $ php filename.php parameters
