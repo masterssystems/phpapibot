@@ -16,33 +16,28 @@
       $action = '?format=php';
     }
 
+    # handle file uploads
+    # - filename: 	target filename (wiki)
+    # - file: 		source filename (path on filesystem)
+    if( isset( $post['filename'] ) && isset( $post['file'] ) ) {
+      if( isset( $post['offset'] ) ) {
+        # build chunk - extract data from source file into chunk file
+        file_put_contents( 'upload.chunk', file_get_contents( $post['file'], false, NULL, $post['offset'], CHUNKSIZE ) );
+        # turn 'chunk' form field into a file upload
+        $post['chunk'] = curl_file_create( 'upload.chunk', mime_content_type( $post['file'] ), $post['filename'] );
+        unset( $post['file'] );
+      } else {
+        # turn 'file' form field into a file upload
+        $post['file'] = curl_file_create( $post['file'], mime_content_type( $post['file'] ), $post['filename'] );
+      }
+    }
+
     # prepare cookie jar file
     touch( 'cookies.txt' );
     $file = realpath( 'cookies.txt' );
 
     # set curl parameter
     $c = curl_init( URL.$action );
-
-    # prepare HTTP headers
-    $headers = array();
-    
-    # handle file uploads
-    # - filename: 	target filename (wiki)
-    # - file: 		source filename (path on filesystem)
-    if( isset( $post['filename'] ) && isset( $post['file'] ) ) {
-      if( isset( $post['offset'] ) ) {
-        # we need to manually add the chunk form field - convert array into post string
-        $post = http_build_query( $post );
-        # build chunk
-        #$boundary = '--boundary-'.md5( time() );
-        #$post['chunk'] = 0;
-        
-      } else {
-        # turn 'file' form field into a file upload
-        $post['file'] = curl_file_create( $post['file'], mime_content_type( $post['filename'] ), $post['filename'] );
-      }
-    }
-
     curl_setopt( $c, CURLOPT_RETURNTRANSFER, true );
     curl_setopt( $c, CURLOPT_ENCODING, 'UTF-8' );
     curl_setopt( $c, CURLOPT_USERAGENT, BOTNAME );
@@ -52,7 +47,6 @@
     curl_setopt( $c, CURLOPT_COOKIEJAR, $file );
     curl_setopt( $c, CURLOPT_COOKIEFILE, $file );
     curl_setopt( $c, CURLOPT_SSL_VERIFYPEER, false );
-    curl_setopt( $c, CURLOPT_HTTPHEADER, $headers );
     if( defined( 'DEBUG' ) ) {
       curl_setopt( $c, CURLOPT_VERBOSE, true );
       #curl_setopt( $c, CURLOPT_HEADER, true ); # Achtung, fügt Header-Daten in den Rückgabewert ein - bricht die Verarbeitung der Daten
@@ -71,10 +65,13 @@
       echo "\n".'----'."\n";
     }
     $r = unserialize( $r );
+    # preserve edit token (needed for chunked uploads which do not return tokens)
+    if( isset( $post['token'] ) ) $r['token'] = $post['token'];
+    # debug output
     if( defined( 'DEBUG' ) ) {
-      echo '---- DEBUG: unserialized object:';
+      echo '---- DEBUG: unserialized object:'."\n";
       var_dump( $r );
-      echo "\n".'----'."\n";
+      echo '----'."\n";
     }
     return $r;
   }
@@ -305,9 +302,9 @@
     }
   }
 
-  function upload_file( $filepath, $filename = false, $text = '', $r = false ) {
+  function upload_file( $filepath, $filename = NULL, $text = '', $r = false ) {
     # guess filename from path when needed
-    if( $filename === false ) $filename = basename( $filepath );
+    if( !$filename ) $filename = basename( $filepath );
     # get filesize
     $filesize = filesize( $filepath );
     
@@ -333,9 +330,9 @@
       echo 'UPLOAD: error '.$r['error']['info']."\n";
       return false;
 
-    } elseif( $r['query']['pages'] ) {
+    } elseif( isset( $r['query']['pages'] ) ) {
       # pages object returned - extract edit token and proceed with upload
-      if( array_key_exists( 'csrftoken', $r ) ) $token = $r['query']['tokens']['csrftoken'];
+      if( isset( $r['query']['tokens']['csrftoken'] ) ) $token = $r['query']['tokens']['csrftoken'];
       else $token = $r['query']['pages'][-1]['edittoken'];
       echo 'UPLOAD: '.$token."\n";
 
@@ -343,28 +340,50 @@
       if( $filesize > CHUNKSIZE ) {
         # start chunked upload
         echo 'UPLOAD: 1st Chunk'."\n";
-        return upload_file( $filepath, $filename, $text, sendcmd( 'upload', array( 'filename' => $filename, 'file' => $filepath, 'offset' => 0, 'stash' => 1, 'token' => $token ) ) );
+        return upload_file( $filepath, $filename, $text, sendcmd( 'upload', array( 'filename' => $filename, 'filesize' => $filesize, 'file' => $filepath, 'offset' => 0, 'stash' => 1, 'ignorewarnings' => 1, 'token' => $token ) ) );
         
       } else {
         # do regular upload
-        return upload_file( $filepath, $filename, $text, sendcmd( 'upload', array( 'filename' => $filename, 'text' => $text, 'file' => $filepath, 'token' => $token ) ) );
+        return upload_file( $filepath, $filename, $text, sendcmd( 'upload', array( 'filename' => $filename, 'text' => $text, 'filesize' => $filesize, 'file' => $filepath, 'ignorewarnings' => 1, 'token' => $token ) ) );
       }
       
-    } elseif( $r['edit']['result'] == 'Failure' ) {
+    } elseif( isset( $r['upload']['filekey'] ) ) {
+      # chunked upload in process
+      $offset = $r['upload']['offset'];
+      $filekey = $r['upload']['filekey'];
+      $token = $r['token'];	# gets preserved by sendcmd()
+      
+      if( $r['upload']['result'] == 'Continue' ) {
+        # upload next chunk
+        echo 'UPLOAD: Chunk offset '.$offset."\n";
+        return upload_file( $filepath, $filename, $text, sendcmd( 'upload', array( 'filename' => $filename, 'filesize' => $filesize, 'file' => $filepath, 'offset' => $offset, 'stash' => 1, 'ignorewarnings' => 1, 'filekey' => $filekey, 'token' => $token ) ) );
+      } elseif( $r['upload']['result'] == 'Success' ) {
+        # delete chunk file
+        unlink( 'upload.chunk' );
+        # finish upload
+        echo 'UPLOAD: Finish'."\n";
+        return upload_file( $filepath, $filename, $text, sendcmd( 'upload', array( 'filename' => $filename, 'text' => $text, 'filesize' => $filesize, 'ignorewarnings' => 1, 'filekey' => $filekey, 'token' => $token ) ) );
+      } else {
+        # problem
+        echo 'UPLOAD: Result Code Unknown: '.$r['upload']['result']."\n";
+        return false;
+      }
+    
+    } elseif( $r['upload']['result'] == 'Failure' ) {
       # upload failed - return and start over
       echo 'UPLOAD: Error '.$r['edit']['result']."\n";
       return false;
     
-    } elseif( $r['edit']['result'] == 'Success' ) {
+    } elseif( $r['upload']['result'] == 'Success' ) {
       # upload succeeded - return object
       echo 'UPLOAD: Success'."\n";
       return $r;
     }
   }
   
-  function upload_file_url( $url, $filename = false, $text = '', $r = false ) {
+  function upload_file_url( $url, $filename = NULL, $text = '', $r = false ) {
     # guess filename from URL when needed
-    if( $filename === false ) $filename = basename( $url );
+    if( !$filename ) $filename = basename( $filepath );
     
     # handle return values (recursion)
     if( !$r ) {
@@ -395,11 +414,11 @@
       else $token = $r['query']['pages'][-1]['edittoken'];
       echo 'UPLOAD: '.$token."\n";
       return upload_file_url( $url, $filename, $text, sendcmd( array( 'action' => 'upload', 'url' => $url, 'filename' => $filename, 'text' => $text, 'async' => 1, 'token' => $token ) ) );
-    } elseif( $r['edit']['result'] == 'Failure' ) {
+    } elseif( $r['upload']['result'] == 'Failure' ) {
       # upload failed - return and start over
       echo 'UPLOAD: Error '.$r['edit']['result']."\n";
       return false;
-    } elseif( $r['edit']['result'] == 'Success' ) {
+    } elseif( $r['upload']['result'] == 'Success' ) {
       # upload succeeded - return object
       echo 'UPLOAD: Success'."\n";
       return $r;

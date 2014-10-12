@@ -16,6 +16,6 @@
   login();
   $filename = basename( $argv[1] );
   echo $filename;
-  # upload file
-  upload_file( $argv[1], $filename, 'upload-text' );
+  # upload file - 2nd parameter could be $filename, when NULL the basename will be taken
+  upload_file( $argv[1], NULL, 'upload-text' );
 ?>
