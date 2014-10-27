@@ -17,5 +17,5 @@
   #$filename = basename( $argv[1] );
   #echo $filename;
   # upload file
-  upload_file_url( $argv[1], '2014-10-23 Zeitzeugen - 25 Jahre Berliner Mauerfall - Armin Schuster.webm', 'upload-text' );
+  upload_file_url( $argv[1], NULL, 'upload-text' );
 ?>
