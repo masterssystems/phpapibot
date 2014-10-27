@@ -410,10 +410,10 @@
 
     } elseif( $r['query']['pages'] ) {
       # pages object returned - extract edit token and proceed with upload
-      if( array_key_exists( 'csrftoken', $r ) ) $token = $r['query']['tokens']['csrftoken'];
+      if( isset( $r['query']['tokens']['csrftoken'] ) ) $token = $r['query']['tokens']['csrftoken'];
       else $token = $r['query']['pages'][-1]['edittoken'];
       echo 'UPLOAD: '.$token."\n";
-      return upload_file_url( $url, $filename, $text, sendcmd( array( 'action' => 'upload', 'url' => $url, 'filename' => $filename, 'text' => $text, 'async' => 1, 'token' => $token ) ) );
+      return upload_file_url( $url, $filename, $text, sendcmd( 'upload', array( 'url' => $url, 'filename' => $filename, 'text' => $text, 'asyncdownload' => 1, 'ignorewarnings' => 1, 'token' => $token ) ) );
     } elseif( $r['upload']['result'] == 'Failure' ) {
       # upload failed - return and start over
       echo 'UPLOAD: Error '.$r['edit']['result']."\n";

@@ -20,9 +20,8 @@
   if( $error == '' ) {
     # login
     login();
-    $filename = basename( $argv[1] );
     # upload file - 2nd parameter could be $filename, when NULL the basename will be taken
-    upload_file( $filename, NULL, $text );
+    upload_file( $filepath, NULL, $text );
   } else {
     # deal with errors
     
