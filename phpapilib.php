@@ -282,17 +282,32 @@
   function put_article( $article = 'Main Page', $text = '', $summary = '', $r = false ) {
     if( !$r ) {
       echo 'EDIT: fetch token'."\n";
-      return put_article( $article, $text, $summary, sendcmd( 'query', array( 'titles' => $article, 'prop' => 'info|revisions', 'intoken' => 'edit' ) ) );
+      return put_article( $article, $text, $summary, sendcmd( 'query', array( 'titles' => $article, 'meta' => 'tokens', 'continue' => '' ) ) );
+
     } elseif( array_key_exists( 'warnings', $r ) ) {
-      echo 'EDIT: warnings '.$r['warnings']['info']['*']."\n";
-      return false;
+      # warning set - check reason
+      if( $r['warnings']['query']['*'] == 'Unrecognized value for parameter \'meta\': tokens' ) {
+        # old wiki - get edit token and retry
+        echo 'UPLOAD: fetch intoken'."\n";
+        return put_article( $article, $text, $summary, sendcmd( 'query', array( 'titles' => $article, 'prop' => 'info', 'intoken' => 'edit' ) ) );
+      } else {
+        # real warning - return and start over
+        echo 'EDIT: warnings '.$r['warnings']['info']['*']."\n";
+        return false;
+      }
+      
     } elseif( array_key_exists( 'error', $r ) ) {
       echo 'EDIT: error '.$r['error']['info']."\n";
       return false;
     } elseif( $r['query']['pages'] ) {
       $page = array_keys( $r['query']['pages'] );
-      echo 'EDIT: '.$r['query']['pages'][$page[0]]['edittoken']."\n";
-      return put_article( $article, $text, $summary, sendcmd( 'edit', array( 'title' => $article, 'text' => $text, 'summary' => $summary, 'token' => $r['query']['pages'][$page[0]]['edittoken'] ) ) );
+      # pages object returned - extract edit token and proceed with upload
+      if( isset( $r['query']['tokens']['csrftoken'] ) ) $token = $r['query']['tokens']['csrftoken'];
+      else $token = $r['query']['pages'][$page[0]]['edittoken'];
+      echo 'EDIT: '.$token."\n";
+
+      return put_article( $article, $text, $summary, sendcmd( 'edit', array( 'title' => $article, 'text' => $text, 'summary' => $summary, 'token' => $token ) ) );
+
     } elseif( $r['edit']['result'] == 'Failure' ) {
       echo 'EDIT: Error '.$r['edit']['result']."\n";
       return false;
