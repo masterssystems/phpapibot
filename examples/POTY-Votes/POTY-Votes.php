@@ -20,7 +20,7 @@
   $vote_file_indicator = 'votebutton';		# identifies a candidate on the category pages - needed to extract the list of candidates
   $vote_user_indicator = '# [[User:';		# identifies a vote on the vote pages - needed to extract the number of votes
   $result_page = 'Commons:Videos für Wikipedia-Artikel/2014/Ergebnis';
-  $result_prefix = 'This is an automaticall created page. Do not change it manually as your changes will be gone during the next update.
+  $result_prefix = 'This is an automatically created page. Do not change it manually as your changes will be gone during the next update.
 
 Last update: '.date( 'Y-m-d H:i:s');
   $result_suffix = 'Source code for this POTY vote analysis tool: https://github.com/masterssystems/phpapibot/blob/master/examples/POTY-Votes/POTY-Votes.php';
