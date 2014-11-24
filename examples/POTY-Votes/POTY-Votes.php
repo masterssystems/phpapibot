@@ -2,7 +2,7 @@
   include( '../../phpapilib.php' );
 
   # configuration
-  $vote_catgerories = array( 
+  $vote_categrories = array( 
     1 => 'Dokumentation und Interview',
     2 => 'Animation',
     3 => 'Experiment und Remix'
@@ -20,6 +20,10 @@
   $vote_file_indicator = 'votebutton';		# identifies a candidate on the category pages - needed to extract the list of candidates
   $vote_user_indicator = '# [[User:';		# identifies a vote on the vote pages - needed to extract the number of votes
   $result_page = 'Commons:Videos für Wikipedia-Artikel/2014/Ergebnis';
+  $result_prefix = 'This is an automaticall created page. Do not change it manually as your changes will be gone during the next update.
+
+Last update: '.date( 'Y-m-d H:i:s');
+  $result_suffix = 'Source code for this POTY vote analysis tool: https://github.com/masterssystems/phpapibot/blob/master/examples/POTY-Votes/POTY-Votes.php';
 
   # prepare
   $files = array();
@@ -68,22 +72,24 @@
 
   # 3rd: create result table
 #  sort( $files );
-  $text  = '{|class="wikitable sortable"'."\n";
+  $text  = $result_prefix."\n";
+  $text .= '{|class="wikitable sortable"'."\n";
   $text .= '!File !! Category !! Votes !! % Category !! % Total'."\n";
   foreach( $files as $filename => $store ) {
     $text .= '|-'."\n";
     $text .= '| [[:File:'.$filename.'|'.$filename.']]'."\n";
-    $text .= '| [['.$vote_category_pages[$store['category']].'|'.$vote_catgerories[$store['category']].']]'."\n";
+    $text .= '| [['.$vote_category_pages[$store['category']].'|'.$vote_categrories[$store['category']].']]'."\n";
     $text .= '|style="text-align:right;"| [['.$vote_list_prefix[$store['category']].$filename.'|'.$store['votes'].']]'."\n";
     $text .= '|style="text-align:right;"| '.round( $store['votes'] / $vote_category[$store['category']] * 100, 1 )."\n";
     $text .= '|style="text-align:right;"| '.round( $store['votes'] / $vote_total * 100, 1 )."\n";
   }
   $text .= '|-'."\n";
-  $text .= '| '.count( $files )."\n";
-  $text .= '| '.count( $vote_catgerories )."\n";
-  $text .= '| '.$vote_total."\n";
+  $text .= '|style="text-align:right;"| '.count( $files )."\n";
+  $text .= '|style="text-align:right;"| '.count( $vote_categrories )."\n";
+  $text .= '|style="text-align:right;"| '.$vote_total."\n";
   $text .= '|colspan="2" style="text-align:right;"| 100'."\n";
   $text .= '|}'."\n";
+  $text .= $result_suffix."\n";
 #  echo $text;
 #  var_dump( $files );
 
